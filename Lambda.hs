@@ -10,6 +10,7 @@ import           Text.Printf
 
 data SimpleLambda
   = SimpleLambda Integer LambdaTree
+  deriving (Show)
 
 data LambdaTree
   = Branch NestedLambdaTree NestedLambdaTree
@@ -19,7 +20,7 @@ data LambdaTree
 data NestedLambdaTree
   = NestedBranch NestedLambdaTree NestedLambdaTree
   | NestedVariable Integer
-  | NestedLambda LambdaTree
+  | NestedLambda SimpleLambda
   deriving (Show)
 
 data Lambda
@@ -39,12 +40,12 @@ allVariables :: [String]
 allVariables = [] : liftA2 (flip (:)) allVariables ['a' .. 'z']
 
 simpleLambdaToLambda :: SimpleLambda -> Lambda
-simpleLambdaToLambda (SimpleLambda offset tree) = simpleLambdaToLambda' (drop 1 allVariables) tree
+simpleLambdaToLambda = simpleLambdaToLambda' (drop 1 allVariables)
   where
 
-    simpleLambdaToLambda' vars lam =
-      let scope = getScope lam + fromIntegral offset
-          body = simpleLambdaToLambda'' scope vars lam
+    simpleLambdaToLambda' vars (SimpleLambda offset tree) =
+      let scope = getScope tree + fromIntegral offset
+          body = simpleLambdaToLambda'' scope vars tree
       in if scope == 0 then body else Lambda (take scope vars) body
 
     simpleLambdaToLambda'' scope vars (Branch a b) = simpleLambdaToLambda''' scope vars (NestedBranch a b)
@@ -92,10 +93,7 @@ instance Monad BinParser where
         BinParser pb -> pb aRest
       More pa' -> More (pa' >>= f)
 
--- instance Alternative BinParser where
---   empty = BinParser $ \_i -> []
---   BinParser a <|> BinParser b =
---     BinParser $ \i -> a i <> b i
+-- No Alternative instance, we cannot fail
 
 next :: BinParser Bool
 next = BinParser $ \case
@@ -110,106 +108,104 @@ next = BinParser $ \case
 bvlParse :: BinParser SimpleLambda
 bvlParse =
   SimpleLambda
-    <$> intParse
+    <$> natParse
     <*> treeParser
   where
     treeParser = next >>= \case
       False -> Branch <$> bvlParse' <*> bvlParse'
-      True -> Variable <$> intParse
+      True -> Variable <$> natParse
     bvlParse' :: BinParser NestedLambdaTree
     bvlParse' = next >>= \case
       False -> NestedBranch <$> bvlParse' <*> bvlParse'
       True -> next >>= \case
-        False -> NestedVariable <$> intParse
-        True -> NestedLambda <$> treeParser
+        False -> NestedVariable <$> natParse
+        True -> NestedLambda <$> bvlParse
 
 bvlSer :: SimpleLambda -> [Bool]
 bvlSer (SimpleLambda n tree) =
-  intSer n <> bvlSer' tree
+  natSer n <> bvlSer' tree
   where
-    bvlSer' (Variable i) = True : intSer i
+    bvlSer' (Variable i) = True : natSer i
     bvlSer' (Branch a b) = False : bvlSer'' a <> bvlSer'' b
-    bvlSer'' (NestedVariable i) = True : False : intSer i
+    bvlSer'' (NestedVariable i) = True : False : natSer i
     bvlSer'' (NestedBranch na nb) = False : bvlSer'' na <> bvlSer'' nb
-    bvlSer'' (NestedLambda lam) = True : True : bvlSer' lam
+    bvlSer'' (NestedLambda lam) = True : True : bvlSer lam
 
 vblParse :: BinParser SimpleLambda
 vblParse =
   SimpleLambda
-    <$> intParse
+    <$> natParse
     <*> treeParser
   where
     treeParser = next >>= \case
-      False -> Variable <$> intParse
+      False -> Variable <$> natParse
       True -> Branch <$> vblParse' <*> vblParse'
     vblParse' :: BinParser NestedLambdaTree
     vblParse' = next >>= \case
-      False -> NestedVariable <$> intParse
+      False -> NestedVariable <$> natParse
       True -> next >>= \case
         False -> NestedBranch <$> vblParse' <*> vblParse'
-        True -> NestedLambda <$> treeParser
+        True -> NestedLambda <$> vblParse
 
 vblSer :: SimpleLambda -> [Bool]
 vblSer (SimpleLambda n tree) =
-  intSer n <> vblSer' tree
+  natSer n <> vblSer' tree
   where
-    vblSer' (Variable i) = False : intSer i
+    vblSer' (Variable i) = False : natSer i
     vblSer' (Branch a b) = True : vblSer'' a <> vblSer'' b
-    vblSer'' (NestedVariable i) = False : intSer i
+    vblSer'' (NestedVariable i) = False : natSer i
     vblSer'' (NestedBranch na nb) = True : False : vblSer'' na <> vblSer'' nb
-    vblSer'' (NestedLambda lam) = True : True : vblSer' lam
+    vblSer'' (NestedLambda lam) = True : True : vblSer lam
 
 lbvParse :: BinParser SimpleLambda
 lbvParse =
   SimpleLambda
-    <$> intParse
+    <$> natParse
     <*> treeParser
   where
     treeParser = next >>= \case
-      False -> Variable <$> intParse
+      False -> Variable <$> natParse
       True -> Branch <$> lbvParse' <*> lbvParse'
     lbvParse' :: BinParser NestedLambdaTree
     lbvParse' = next >>= \case
-      False -> NestedLambda <$> treeParser
+      False -> NestedLambda <$> lbvParse
       True -> next >>= \case
         False -> NestedBranch <$> lbvParse' <*> lbvParse'
-        True -> NestedVariable <$> intParse
+        True -> NestedVariable <$> natParse
 
 lbvSer :: SimpleLambda -> [Bool]
 lbvSer (SimpleLambda n tree) =
-  intSer n <> lbvSer' tree
+  natSer n <> lbvSer' tree
   where
-    lbvSer' (Variable i) = False : intSer i
+    lbvSer' (Variable i) = False : natSer i
     lbvSer' (Branch a b) = True : lbvSer'' a <> lbvSer'' b
-    lbvSer'' (NestedVariable i) = True : True : intSer i
+    lbvSer'' (NestedVariable i) = True : True : natSer i
     lbvSer'' (NestedBranch na nb) = True : False : lbvSer'' na <> lbvSer'' nb
-    lbvSer'' (NestedLambda lam) = False : lbvSer' lam
+    lbvSer'' (NestedLambda lam) = False : lbvSer lam
 
-intSer :: Integer -> [Bool]
-intSer 0 = [False]
-intSer i = True : listSer (tail (intSer' [] i))
+natSer :: Integer -> [Bool]
+natSer 0 = [False]
+natSer i = True : listSer (tail (natSer' [] i))
   where
     listSer [] = [False]
     listSer (a : as) = True : a : listSer as
-    intSer' acc 0 = acc
-    intSer' acc n = intSer' ((n `mod` 2 == 1) : acc) (n `div` 2)
+    natSer' acc 0 = acc
+    natSer' acc n = natSer' ((n `mod` 2 == 1) : acc) (n `div` 2)
 
 
-intParse :: BinParser Integer
-intParse = do
+natParse :: BinParser Integer
+natParse = do
   next >>= \case
     False -> pure 0
-    True -> intParse'' 1
+    True -> natParse'' 1
 
   where
-    intParse' acc = next >>= \case
-      False -> intParse'' (acc `shift` 1)
-      True -> intParse'' ((acc `shift` 1) + 1)
-    intParse'' acc = next >>= \case
+    natParse' acc = next >>= \case
+      False -> natParse'' (acc `shift` 1)
+      True -> natParse'' ((acc `shift` 1) + 1)
+    natParse'' acc = next >>= \case
       False -> pure acc
-      True -> intParse' acc
-
-
+      True -> natParse' acc
 
 nextGen :: [([Bool], Gen a)] -> [([Bool], Gen a)]
 nextGen gen = do
@@ -271,8 +267,8 @@ main = do
       printf " %2d: %5.2f%%\n" b (fromIntegral nDones * 100 / fromIntegral nNumbers :: Double)
     printf "\n"
 
-    printf "First 100 lambdas:\n"
-    forM_ (take 100 $ binsLambdas parser) $ \(b, l) ->
+    printf "First 50 lambdas:\n"
+    forM_ (take 50 $ binsLambdas parser) $ \(b, l) ->
       printf " %12s: %s\n" (showBin b) (prettyLambda (simpleLambdaToLambda l))
 
     printf "\n"
@@ -283,7 +279,7 @@ main = do
       printf " %50s[%d]: %s\n" (showBin bin) (length bin) (prettyLambda (simpleLambdaToLambda term))
 
 y :: SimpleLambda
-y = SimpleLambda 0 (Branch (NestedBranch (NestedLambda (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1)))) (NestedVariable 0)) (NestedBranch (NestedLambda (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1)))) (NestedVariable 0)))
+y = SimpleLambda 0 (Branch (NestedBranch (NestedLambda (SimpleLambda 0 (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1))))) (NestedVariable 0)) (NestedBranch (NestedLambda (SimpleLambda 0 (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1))))) (NestedVariable 0)))
 
 smallY :: SimpleLambda
-smallY = SimpleLambda 0 (Branch (NestedLambda (Branch (NestedVariable 0) (NestedVariable 0))) (NestedBranch (NestedLambda (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1)))) (NestedVariable 0)))
+smallY = SimpleLambda 0 (Branch (NestedLambda (SimpleLambda 0 (Branch (NestedVariable 0) (NestedVariable 0)))) (NestedBranch (NestedLambda (SimpleLambda 0 (Branch (NestedVariable 0) (NestedBranch (NestedVariable 1) (NestedVariable 1))))) (NestedVariable 0)))
