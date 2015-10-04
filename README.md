@@ -8,7 +8,7 @@ A **list-binding** lambda term is a lambda term where lambdas can bind one or mo
 
 For example the Y combinator ```\f. (\x. f (x x)) (\x. f (x x))``` is not simple because the nested lambdas capture ```f```. This can be remedied by explicitly capturing: ```\f. (\f' x. f' (x x)) f ((\f' x. f' (x x)) f)```.
 
-Lambda.hs contains three variants of essentially the same encoding, the only difference is what the bits mean when deciding whether we are parsing a **v**ariable, **b**ranch(application) or a nested **l**ambda. The three variables therefore are vbl bvl and lbv.
+Lambda.hs contains three variants of essentially the same encoding, the only difference is what the bits mean when deciding whether we are parsing a **v**ariable, **b**ranch(application) or a nested **l**ambda. The three variants therefore are vbl bvl and lbv.
 
 The encoding is
 - Complete: every simple lambda term has an encoding
